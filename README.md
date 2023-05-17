@@ -11,7 +11,8 @@ bigquery-public-data:census_bureau_acs.blockgroup_2018_5yr
 # Assumptions
 1. the population growth in different states are the same
 The latest available date for census is 2014-01-01; the last available date for AQI is 2022-05-31. In this case, the experiment assumes the population growth in different states are the same, so we can use the population in 2014 with the latest AQI since the ultimate goal is to calculate the percentage of population in different air quality zones.
-2.AQI before 2021-05-31(one year before the latest available date) is expired
+
+2. AQI before 2021-05-31(one year before the latest available date) is expired
 Theoretically, the AQI is a real-time index, while big query public data only has the historical data and there are only 3 counties with AQI on the latest day. Therefore, to classify different air quality zones more comprehensively, the experiment uses different classification with two types of observing windows. The first type of classification is based on the AQI of the latest available day of each region; the second type of classification is based on the AQI over the last one year of each region.
 For both methods, only the data in the lag 1Y before 2022-05-31(2021-05-31 ~ 2022-05-31) is considered. The AQIs of the states and counties that haven’t been monitored in over a year are considered expired and therefore, do not hold any significance. 
 
