@@ -2,9 +2,11 @@
 Identify the estimated percentage of US population that is residing in the different air quality zones based on Air Quality Index(AQI) using Google public datasets and BigQuery.
 
 # Datasets(All from Google Public data):
-● bigquery-public-data:epa_historical_air_quality.o3_daily_summary
-● bigquery-public-data:geo_census_blockgroups. Us_blockgroups_national
-● bigquery-public-data:census_bureau_acs.blockgroup_2018_5yr
+bigquery-public-data:epa_historical_air_quality.o3_daily_summary
+
+bigquery-public-data:geo_census_blockgroups. Us_blockgroups_national
+
+bigquery-public-data:census_bureau_acs.blockgroup_2018_5yr
 
 # Assumptions
 1. the population growth in different states are the same
