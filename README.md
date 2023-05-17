@@ -26,10 +26,13 @@ For both methods, only the data in the lag 1Y before 2022-05-31(2021-05-31 ~ 202
 
 # 3 Solutions of Classifying Air Quality Zones
 1. use AQI on the latest available date of each region
+
 The assumption here is that AQI of regions didn’t change since the last time they’re monitored. We still need to remove the expired AQI of states and counties that haven’t been monitored in over a year.
 2. use 75th percentile AQI in a year
+
 Using the data from the o3_daily_summary table, the 75th percentile of the AQI distribution can be determined for each state, county, and monitoring site, then group the air quality zones based on this percentile. The assumption here is if over 25% AQI is larger than a certain number, the region will be classified as the air quality zone that contains this number.
 For example, if the 75th percentile of AQI of a region is 77, group the region to AQI 50~100 because over 25% AQI is larger than 50, which indicates the air quality of that region is moderate. 
-4. use the majority of days with AQI in a year
+3. use the majority of days with AQI in a year
+
 The assumption here is that the most appeared zone for each state, county, and monitoring site over a year will be defined as the final air quality zone for that region. 
 For example, if a region has 277 days with AQI in 0-50, 20 days with AQI in 51-100, 4 days with AQI in 101-150, it can be classified as AQI 0-50 zone. This approach would provide a comprehensive and statistically sound way of determining the overall air quality for a given region, based on the frequency of different air quality zones. However,  it has the potential to underestimate the air quality zone of each region.
