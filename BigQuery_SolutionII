@@ -1,0 +1,99 @@
+WITH main AS(
+SELECT state_code,county_code,site_num,state_name,latitude,longitude, APPROX_QUANTILES(aqi, 3)[OFFSET(2)] AS `%75`
+FROM `bigquery-public-data.epa_historical_air_quality.o3_daily_summary`
+WHERE date_local>='2021-05-31'
+GROUP BY state_code,county_code,state_name,site_num,latitude, longitude),
+main_aqi AS(
+SELECT state_name,state_code,county_code, `%75`, latitude, longitude,site_num,
+CASE
+WHEN `%75` BETWEEN 0 AND 50 THEN 'AQI 0-50'
+WHEN `%75` BETWEEN 51 AND 100 THEN 'AQI 51-100'
+WHEN `%75` BETWEEN 101 AND 150 THEN 'AQI 101-150'
+ELSE 'AQI > 150'
+END AS aqi_range
+FROM main),
+MAJORITY AS(
+SELECT DISTINCT state_code, county_code
+FROM (SELECT state_code,county_code,cnt_aqi_range
+ 		FROM( SELECT state_code, county_code, COUNT(DISTINCT aqi_range) AS cnt_aqi_range
+FROM main_aqi
+      			GROUP BY state_code,county_code))
+WHERE cnt_aqi_range=1),
+MAJORITY_AQI AS(
+SELECT DISTINCT c.geo_id, n.aqi_range
+FROM MAJORITY m
+INNER JOIN main_aqi n
+ON m.state_code = n.state_code AND m.county_code = n.county_code
+INNER JOIN `bigquery-public-data.geo_census_blockgroups.us_blockgroups_national` c
+ON m.state_code = c.state_fips_code AND m.county_code = c.county_fips_code),
+EXCEPTION AS(
+SELECT DISTINCT state_code, county_code
+FROM (SELECT state_code,county_code,cnt_aqi_range
+FROM(SELECT state_code, county_code, COUNT(DISTINCT aqi_range) AS cnt_aqi_range
+FROM main_aqi
+      			GROUP BY state_code,county_code))
+WHERE cnt_aqi_range>1),
+EXCEPT_SITE_LOC AS(
+SELECT DISTINCT EXCEPTION.state_code, EXCEPTION.county_code, main_aqi.latitude, main_aqi.longitude,main_aqi.site_num, main_aqi.aqi_range
+FROM EXCEPTION
+INNER JOIN main_aqi
+ON EXCEPTION.state_code = main_aqi.state_code AND EXCEPTION.county_code = main_aqi.county_code),
+EXCEPT_GEO AS (
+SELECT EXCEPTION.state_code, EXCEPTION.county_code, c.internal_point_lon, c.internal_point_lat, c.geo_id
+FROM EXCEPTION
+INNER JOIN `bigquery-public-data.geo_census_blockgroups.us_blockgroups_national` c
+ON EXCEPTION.state_code = c.state_fips_code AND EXCEPTION.county_code = c.county_fips_code),
+DISTANCE_GEO AS(
+SELECT site_num, geo_id, distance, aqi_range, ROW_NUMBER() OVER (PARTITION BY geo_id ORDER BY distance) AS row_number
+FROM (
+SELECT a.site_num,a.aqi_range,b.geo_id,ST_DISTANCE(
+ST_GEOGPOINT(a.longitude, a.latitude),
+ST_GEOGPOINT(b.internal_point_lon,b.internal_point_lat)) AS distance
+FROM EXCEPT_GEO b
+CROSS JOIN EXCEPT_SITE_LOC a
+ORDER BY distance ASC)),
+null_air AS(
+SELECT DISTINCT b.state_name,b.county_name,a.state_code,a.county_code FROM(
+SELECT DISTINCT state_code, county_code
+FROM `bigquery-public-data.epa_historical_air_quality.o3_daily_summary`
+WHERE date_local>='2021-05-31')a
+RIGHT JOIN `bigquery-public-data.geo_census_blockgroups.us_blockgroups_national` b
+ON a.state_code = b.state_fips_code AND a.county_code=b.county_fips_code
+WHERE a.state_code IS NULL),
+Null_air_geo AS(
+SELECT DISTINCT b.state_fips_code, b.county_fips_code, b.internal_point_lat, b.internal_point_lon, b.geo_id
+FROM null_air
+INNER JOIN `bigquery-public-data.geo_census_blockgroups.us_blockgroups_national` b
+ON null_air.state_name = b.state_name AND null_air.county_name = b.county_name),
+DD AS(
+SELECT n.geo_id, m.site_num,m.aqi_range, ST_DISTANCE(
+ST_GEOGPOINT(m.longitude, m.latitude),
+ST_GEOGPOINT(n.internal_point_lon,n.internal_point_lat)) AS distance
+FROM Null_air_geo n
+CROSS JOIN(SELECT DISTINCT state_code, county_code, site_num, latitude, longitude,aqi_range FROM main_aqi) m),
+NEAREST AS(
+SELECT geo_id, aqi_range FROM (
+SELECT geo_id, aqi_range, ROW_NUMBER() OVER (PARTITION BY geo_id ORDER BY distance) AS row_number FROM DD)
+WHERE row_number=1),
+AQI AS(
+SELECT * FROM MAJORITY_AQI
+UNION ALL
+SELECT geo_id, aqi_range FROM DISTANCE_GEO WHERE row_number=1
+UNION ALL
+SELECT * FROM NEAREST),
+AQI_POP AS(
+SELECT DISTINCT AQI.geo_id, AQI.aqi_range, d.total_pop
+FROM AQI
+INNER JOIN `bigquery-public-data.census_bureau_acs.blockgroup_2018_5yr` d
+ON AQI.geo_id = d.geo_id)
+SELECT aqi_range AS `Air Quality`, SUM(total_pop)/(SELECT SUM(total_pop) FROM `bigquery-public-data.census_bureau_acs.blockgroup_2018_5yr`
+)*100 AS `%Population` 
+FROM AQI_POP
+GROUP BY aqi_range 
+ORDER BY CASE `Air Quality`
+  WHEN 'AQI 0-50' THEN 1
+  WHEN 'AQI 51-100' THEN 2
+  WHEN 'AQI 101-150' THEN 3
+  WHEN 'AQI > 150' THEN 4
+  -- default order
+END
